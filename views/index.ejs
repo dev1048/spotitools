@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpotiTools</title>
+    <link rel="icon" type="image/png" href="https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg">
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet"></head>
+<body>
+<div class="background-animate"></div>
+
+<div class="main-container">
+    <header>
+        <i class="fa-brands fa-spotify logo-icon"></i>
+        <h1>Spoti<span class="highlight">Tools</span></h1>
+        <p>Fastest Audio Downloader</p>
+    </header>
+
+    <div class="control-panel" id="searchPanel">
+        <div class="input-group">
+            <input type="text" id="urlInput" placeholder="Paste Spotify URL..." autocomplete="off" onkeydown="handleEnter(event)">
+        </div>
+        <button id="checkBtn" onclick="fetchInfo()">
+            <i class="fa-solid fa-search"></i> Find
+        </button>
+    </div>
+
+    <div id="activeDownloadCard" class="card hidden">
+        <div class="card-content">
+            <div class="info-text">
+                <h2>Processing...</h2>
+                <div class="progress-track">
+                    <div id="progressBar" class="progress-fill"></div>
+                </div>
+                <p id="statusText">Starting...</p>
+
+                <div style="margin-top:20px; display:flex; gap:10px; flex-wrap:wrap;">
+                    <a id="finalLink" href="#" class="hidden download-final-btn" onclick="triggerTipPopup()" target="_blank">
+                        <span id="btnIcon"><i class="fa-solid fa-download"></i></span>
+                        <span id="btnText">Save File</span>
+                    </a>
+
+                    <button id="cancelBtn" class="btn-cancel" onclick="cancelDownload()">
+                        <i class="fa-solid fa-ban"></i> Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="selectionModal" class="modal-overlay hidden">
+    <div class="glass-modal">
+        <div class="modal-header">
+            <div style="display:flex; gap:15px; align-items:center;">
+                <img id="modalCover" src="" alt="">
+                <div>
+                    <h2 id="modalTitle">Title</h2>
+                    <p id="modalCount">0 Songs</p>
+                </div>
+            </div>
+            <button class="close-modal" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="modal-body">
+            <div class="settings-row">
+                <div class="setting-group">
+                    <label>Format</label>
+                    <select id="formatSelect" class="styled-select" onchange="updatePreview()">
+                        <option value="mp3">MP3 (320kbps)</option>
+                        <option value="flac">FLAC (Lossless)</option>
+                        <option value="m4a">M4A</option>
+                        <option value="wav">WAV</option>
+                    </select>
+                </div>
+                <div class="setting-group" style="flex:2;">
+                    <label>Naming (%t=Title, %a=Artist)</label>
+                    <input type="text" id="namingPattern" value="%t - %a" oninput="updatePreview()">
+                    <small id="namePreview" style="color:#888; display:block; margin-top:5px; font-size:0.75rem;">Preview: Song - Artist.mp3</small>
+                </div>
+                <div class="setting-group" style="flex:1.5;">
+                    <label>Email Link (Optional)</label>
+                    <input type="email" id="emailInput" placeholder="name@email.com">
+                </div>
+            </div>
+            <div class="list-controls">
+                <div>
+                    <button class="btn-text" onclick="toggleAll(true)">Select All</button> /
+                    <button class="btn-text" onclick="toggleAll(false)">None</button>
+                </div>
+                <div>
+                    <select id="pageSize" class="styled-select" onchange="changePageSize()">
+                        <option value="25">Show 25</option>
+                        <option value="50">Show 50</option>
+                        <option value="100">Show 100</option>
+                    </select>
+                </div>
+            </div>
+            <div class="song-list-container">
+                <table class="song-table">
+                    <thead>
+                    <tr>
+                        <th width="40">#</th>
+                        <th>Title</th>
+                        <th>Artist</th>
+                    </tr>
+                    </thead>
+                    <tbody id="songTableBody"></tbody>
+                </table>
+            </div>
+
+            <div class="pagination-footer">
+                <button onclick="changePage(-1)" id="btnPrev"><i class="fa-solid fa-chevron-left"></i></button>
+                <span id="pageIndicator">Page 1</span>
+                <button onclick="changePage(1)" id="btnNext"><i class="fa-solid fa-chevron-right"></i></button>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <div style="color:#aaa; font-size:0.9rem;"><span id="selectedCount">0</span> selected</div>
+            <button class="btn-premium" onclick="confirmDownload()">Start Download <i class="fa-solid fa-arrow-right"></i></button>
+        </div>
+    </div>
+</div>
+<div id="tipModal" class="modal-overlay hidden">
+    <div class="glass-modal" style="max-width: 400px; height: auto; text-align: center;">
+        <div class="modal-body" style="padding: 40px;">
+            <i class="fa-solid fa-gift" style="font-size: 3rem; color: #ffeb3b; margin-bottom: 20px;"></i>
+            <h2>Enjoying the music?</h2>
+            <p style="color: #ccc; margin-bottom: 30px;">Server costs are high. A small tip keeps us alive!</p>
+            <button class="btn-premium" onclick="window.open('/tip', '_blank')" style="width:100%; justify-content:center;">
+                <i class="fa-solid fa-coffee"></i> Buy us a coffee
+            </button>
+            <button class="btn-text" onclick="document.getElementById('tipModal').classList.add('hidden')" style="margin-top:15px; color: #666;">
+                Maybe later
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let allTracks = [];
+    let selectedIndices = new Set();
+    let metaData = {};
+    let currentPage = 1;
+    let itemsPerPage = 25;
+    let currentDownloadId = null;
+    window.onload = function() {
+        const savedId = localStorage.getItem('activeDownloadId');
+        if(savedId) {
+            checkStatus(savedId);
+        }
+    };
+
+    async function checkStatus(uuid) {
+        try {
+            const res = await fetch(`/api/status/${uuid}`);
+            const data = await res.json();
+
+            if (data.active) {
+                restoreActiveState(uuid);
+            } else if (data.exists) {
+                localStorage.removeItem('activeDownloadId');
+            } else {
+                localStorage.removeItem('activeDownloadId');
+            }
+        } catch(e) {
+            localStorage.removeItem('activeDownloadId');
+        }
+    }
+
+    function restoreActiveState(uuid) {
+        currentDownloadId = uuid;
+        disableSearch(true);
+        document.getElementById('activeDownloadCard').classList.remove('hidden');
+        startEventSource(uuid);
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === "Escape") {
+            closeModal();
+            document.getElementById('tipModal').classList.add('hidden');
+        }
+    });
+
+    function handleEnter(e) { if (e.key === 'Enter') fetchInfo(); }
+
+    function disableSearch(disable) {
+        document.getElementById('urlInput').disabled = disable;
+        document.getElementById('checkBtn').disabled = disable;
+        if(disable) {
+            document.getElementById('checkBtn').classList.add('disabled-btn');
+        } else {
+            document.getElementById('checkBtn').classList.remove('disabled-btn');
+        }
+    }
+
+    function resetUI() {
+        document.getElementById('activeDownloadCard').classList.add('hidden');
+        disableSearch(false);
+        document.getElementById('urlInput').focus();
+
+        document.getElementById('progressBar').style.width = '0%';
+        document.getElementById('statusText').innerText = 'Starting...';
+        document.getElementById('finalLink').classList.add('hidden');
+        document.getElementById('cancelBtn').classList.remove('hidden');
+
+        allTracks = [];
+        selectedIndices.clear();
+        currentDownloadId = null;
+        localStorage.removeItem('activeDownloadId');
+    }
+
+    async function cancelDownload() {
+        if (!currentDownloadId) return resetUI();
+        const btn = document.getElementById('cancelBtn');
+        btn.innerText = "Cancelling...";
+        btn.disabled = true;
+
+        try {
+            await fetch('/api/cancel', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ uuid: currentDownloadId })
+            });
+        } catch(e) {}
+
+        setTimeout(() => {
+            btn.innerHTML = '<i class="fa-solid fa-ban"></i> Cancel';
+            btn.disabled = false;
+            resetUI();
+        }, 1000);
+    }
+
+    async function fetchInfo() {
+        resetUI();
+        const link = document.getElementById('urlInput').value.trim();
+        if(!link) return;
+
+        const btn = document.getElementById('checkBtn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+        disableSearch(true);
+
+        try {
+            const res = await fetch('/api/info', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ link })
+            });
+            const data = await res.json();
+
+            btn.innerHTML = originalText;
+            disableSearch(false);
+
+            if (data.error) throw new Error(data.error);
+
+            if (data.tracks.length === 1) {
+                launchDirectDownload(data.tracks, data.title, data.type);
+                return;
+            }
+            allTracks = data.tracks;
+            metaData = data;
+            selectedIndices = new Set(allTracks.map((_, i) => i));
+
+            document.getElementById('modalTitle').innerText = data.title;
+            document.getElementById('modalCover').src = data.cover;
+            document.getElementById('modalCount').innerText = `${data.tracks.length} Songs`;
+            document.getElementById('selectionModal').classList.remove('hidden');
+            renderTable();
+            updatePreview();
+
+        } catch(e) {
+            alert("Error: " + e.message);
+            btn.innerHTML = originalText;
+            disableSearch(false);
+        }
+    }
+    function renderTable() {
+        const tbody = document.getElementById('songTableBody');
+        tbody.innerHTML = '';
+        const start = (currentPage - 1) * itemsPerPage;
+        const end = start + itemsPerPage;
+        const pageItems = allTracks.slice(start, end);
+
+        pageItems.forEach((track, index) => {
+            const realIndex = start + index;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><input type="checkbox" ${selectedIndices.has(realIndex) ? 'checked' : ''} onchange="toggleIndex(${realIndex})"></td>
+                <td style="color:white; font-weight:500;">${track.title}</td>
+                <td style="color:#aaa;">${track.artist}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('pageIndicator').innerText = `Page ${currentPage} of ${Math.ceil(allTracks.length / itemsPerPage)}`;
+        document.getElementById('btnPrev').disabled = currentPage === 1;
+        document.getElementById('btnNext').disabled = end >= allTracks.length;
+        document.getElementById('selectedCount').innerText = selectedIndices.size;
+    }
+
+    function toggleIndex(index) {
+        if (selectedIndices.has(index)) selectedIndices.delete(index);
+        else selectedIndices.add(index);
+        document.getElementById('selectedCount').innerText = selectedIndices.size;
+    }
+
+    function toggleAll(state) {
+        if(state) selectedIndices = new Set(allTracks.map((_, i) => i));
+        else selectedIndices.clear();
+        renderTable();
+    }
+
+    function changePage(delta) { currentPage += delta; renderTable(); }
+    function changePageSize() { itemsPerPage = parseInt(document.getElementById('pageSize').value); currentPage = 1; renderTable(); }
+
+    function updatePreview() {
+        const pattern = document.getElementById('namingPattern').value;
+        const format = document.getElementById('formatSelect').value;
+        const t = allTracks.length > 0 ? allTracks[0].title : "Song";
+        const a = allTracks.length > 0 ? allTracks[0].artist : "Artist";
+        document.getElementById('namePreview').innerText = `Preview: ${pattern.replace(/%t/g, t).replace(/%a/g, a)}.${format}`;
+    }
+
+    function closeModal() { document.getElementById('selectionModal').classList.add('hidden'); }
+    function openTipModal() { document.getElementById('tipModal').classList.remove('hidden'); }
+
+    async function launchDirectDownload(tracks, title, type) {
+        apiStart(tracks, 'mp3', '%t - %a', title, type, '');
+    }
+
+    function confirmDownload() {
+        if(selectedIndices.size === 0) return alert("Select at least one song.");
+        const selectedTracks = allTracks.filter((_, i) => selectedIndices.has(i));
+        const fmt = document.getElementById('formatSelect').value;
+        const pat = document.getElementById('namingPattern').value;
+        const email = document.getElementById('emailInput').value;
+
+        document.getElementById('selectionModal').classList.add('hidden');
+        apiStart(selectedTracks, fmt, pat, metaData.title, metaData.type, email);
+    }
+
+    async function apiStart(tracks, format, pattern, title, type, email) {
+        disableSearch(true);
+        document.getElementById('activeDownloadCard').classList.remove('hidden');
+
+        try {
+            const res = await fetch('/api/start-download', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ tracks, format, pattern, title, type, email })
+            });
+            const data = await res.json();
+            if(data.success) {
+                currentDownloadId = data.downloadId;
+                localStorage.setItem('activeDownloadId', data.downloadId);
+                startEventSource(data.downloadId);
+            }
+        } catch(e) {
+            alert("Connection error");
+            resetUI();
+        }
+    }
+
+    function startEventSource(uuid) {
+        const pBar = document.getElementById('progressBar');
+        const pText = document.getElementById('statusText');
+        const finalLink = document.getElementById('finalLink');
+        const btnIcon = document.getElementById('btnIcon');
+        const btnText = document.getElementById('btnText');
+        const cancelBtn = document.getElementById('cancelBtn');
+
+        const es = new EventSource(`/api/progress/${uuid}`);
+        es.onmessage = (e) => {
+            const d = JSON.parse(e.data);
+            pBar.style.width = d.progress + '%';
+            pText.innerText = d.message;
+
+            if (d.progress >= 100 && d.url) {
+                es.close();
+                localStorage.removeItem('activeDownloadId');
+
+                pText.innerText = "Complete!";
+                pText.style.color = "#1DB954";
+
+                if (d.isZip) {
+                    btnIcon.innerHTML = '<i class="fa-solid fa-file-zipper"></i>';
+                    btnText.innerText = "Download ZIP";
+                } else {
+                    btnIcon.innerHTML = '<i class="fa-solid fa-music"></i>';
+                    btnText.innerText = "Download Audio";
+                }
+
+                finalLink.href = d.url;
+                finalLink.classList.remove('hidden');
+                cancelBtn.classList.add('hidden');
+                disableSearch(false);
+            }
+        };
+    }
+
+    function triggerTipPopup() {
+        setTimeout(() => { document.getElementById('tipModal').classList.remove('hidden'); }, 2000);
+    }
+</script>
+</body>
+</html>
